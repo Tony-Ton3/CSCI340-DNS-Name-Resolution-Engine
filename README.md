@@ -39,8 +39,8 @@ Some files are included with this assignment for your benefit. You are not requi
 2. **queueTest.c** This program runs a series of tests to confirm that the queue is working correctly. You may use it as an example of how to use the queue, or to test the functionality of the queue code that you are provided.
 3. **util.c** and **util.h** These two files contain the DNS lookup utility function. This function abstracts away a lot of the complexity involved with performing a DNS lookup. The function accepts a hostname as input and generates a corresponding dot-formatted IPv4 IP address string as output.
 	* Please consult the *util.h* header file for more detailed descriptions of each available function.
-4. **input/names*.txt** This is a set of sample name files. They follow the same format as mentioned earlier. Use them to test your program.
-5. **results-ref.txt** This result file is a sample output of the IPs for the hostnames from all the **names*.txt** files used as input.
+4. **input/names\*.txt** This is a set of sample name files. They follow the same format as mentioned earlier. Use them to test your program.
+5. **results-ref.txt** This result file is a sample output of the IPs for the hostnames from all the **names\*.txt** files used as input.
 6. **lookup.c** This program represents an un-threaded solution to this assignment. Feel free to use it as a starting point for your program, or as a reference for using the utility functions and performing file i/o in C.
 7. **pthread-hello.c** A simple threaded "Hello World" program to demonstrate basic use of the `pthread` library.
 8. **Makefile** A GNU Make makefile to build all the code.
