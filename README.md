@@ -117,6 +117,8 @@ To received full credit your program must:
 * Document any resources you use to solve your assignment in the header comment of your file
 * Include your name in the header comment of your file
 
+### DO NOT USE THIS AS VALGRIND HAS ISSUES WITH THREADS, USE IF YOU ARE CURIOUS
+
 This includes adhering to good coding style practices. To verify that you do not leak memory, I may use *valgrind* to test your program. To install *valgrind*, use the following command:
 ```
 sudo apt-get install valgrind
