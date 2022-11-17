@@ -117,6 +117,8 @@ To received full credit your program must:
 * Document any resources you use to solve your assignment in the header comment of your file
 * Include your name in the header comment of your file
 
+### DO NOT USE THIS AS VALGRIND HAS ISSUES WITH THREADS, USE AT YOUR OWN RISK
+
 This includes adhering to good coding style practices. To verify that you do not leak memory, I may use *valgrind* to test your program. To install *valgrind*, use the following command:
 ```
 sudo apt-get install valgrind
@@ -141,6 +143,7 @@ You may wish to consult the man pages for the following items, as they will be u
 * man 3 pthread_mutex_destroy
 * man 3 pthread_mutex_lock
 * man 3 pthread_mutex_unlock
+* man 3 pthread_mutex_trylock
 * man 3 fopen
 * man 3 fclose
 * man 3 fprintf
