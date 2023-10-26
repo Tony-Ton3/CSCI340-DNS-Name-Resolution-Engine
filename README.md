@@ -84,7 +84,7 @@ You may use the following libraries and code to complete this assignment, as wel
 If you would like to use additional external libraries, you must clear it with me first. You will not be allowed to use pre-existing thread-safe queue or file i/o libraries since the point of this assignment is to teach you how to make non-thread-safe resources thread-safe.
 
 ## What You Must Provide
-To receive full credit, you must submit the following items to Turnin by the due date.
+To receive full credit, you must submit the following items to INGInious by the due date.
 
 * **multi-lookup.c**: Your program, conforming to the above requirements
 * **multi-lookup.h**: A header file containing prototypes for any function you write as part of your program.
