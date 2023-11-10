@@ -24,12 +24,12 @@ void* PrintHello(void* threadid)
 
     /* Print hello numprint times */
     for(t=0; t<numprint; t++)
-	{
+    {
 	    printf("Hello World! It's me, thread #%ld! "
 		   "This is printout %ld of %ld\n",
 		   *tid, (t+1), numprint);
 	    /* Sleep for 1 to 2 Seconds */
-	    usleep((rand()%100)*10000+1000000);
+	    usleep((rand()%100*10000+1000000));
 	}
     
     /* Exit, Returning NULL*/
