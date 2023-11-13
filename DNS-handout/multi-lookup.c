@@ -1,174 +1,158 @@
-//dependencies
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-#include <pthread.h>
-#include <unistd.h>	
+#include <pthread.h> //for thread handling
+#include <unistd.h>	//for usleep
 
 //header files for queue and dnslookup
 #include "queue.h"
 #include "util.h"
 
-#define MIN_ARGS 3 //at least 3 fields: executable, input file, output file
+//constants
+#define MINARGS 3 
+#define USAGE "<inputFilePath> <outputFilePath>"
 #define MAX_RESOLVER_THREADS 10
 #define MAX_NAME_LENGTH 1025
-#define USAGE "<inputFilePath> <outputFilePath>"
 #define INPUTFS "%1024s"
+#define MAX_IP_LENGTH INET6_ADDRSTRLEN
 
+struct threadArgs{ //hold necessary member variables to perform thread safe operations
 
-// Global variables
-queue hostnameQueue;
-pthread_mutex_t queueLock;
-pthread_mutex_t fileLock;
-FILE* outputfp = NULL;		//Holds the output file
-int requestThreadsFinished = 0;
+	FILE* inputFile; //FILE pointer for input file
+	FILE* outputFile; //FILE pointer for output file
+	queue fifoQueue; //queue storing urls
 
-void* requestThread(void* inputFileName)
-{
-	char hostname[MAX_NAME_LENGTH];	//Holds the individual hostname
-	char* payload;
-	FILE* inputFile = fopen(inputFileName, "r");
+	//shared resources must be protected by mutex
+	pthread_mutex_t queueLock;
+	pthread_mutex_t fileLock;
 
-	/* Read File and Process*/
-	while(fscanf(inputFile, INPUTFS, hostname) > 0)
-	{
-		while(1){
-			pthread_mutex_lock(&queueLock);
-			if(queue_is_full(&hostnameQueue)){
-				pthread_mutex_unlock(&queueLock);
-				usleep( rand() % 100 );
-			}else{ //queue is not full
-				payload = malloc(MAX_NAME_LENGTH);
-				strncpy(payload, hostname, MAX_NAME_LENGTH); 
-				queue_push(&hostnameQueue, payload);
-				pthread_mutex_unlock(&queueLock);
-				break;
-			}
-		}
-	}
-	/* Close Input File */
-	fclose(inputFile);
-	return NULL;
-}
+	//command line arguments
+	char** argv;
+	int argc;
 
-void* resolverThread()
-{
-	char* hostname;	//Should contain the hostname
-	char firstipstr[INET6_ADDRSTRLEN]; //Holds the resolved IP address
+};
 
-	while(!queue_is_empty(&hostnameQueue) || !requestThreadsFinished)
-	{
-		pthread_mutex_lock(&queueLock);
-		if(!queue_is_empty(&hostnameQueue))
-		{
-			hostname = queue_pop(&hostnameQueue);
+//used to signal when all requests have been processed
+int allRequestProcessed = 0;
 
-			if(hostname != NULL)
-			{
-				pthread_mutex_unlock(&queueLock);
+void* requestThread(void* inputFileName){
 
-				int dnsRC = dnslookup(hostname, firstipstr, sizeof(firstipstr));
+	struct threadArgs *args = (struct threadArgs*) inputFileName; 
+	char buff[MAX_NAME_LENGTH]; //will hold a url at a time from inputFile
+	char* url; //hold the url from buff
 
-				if(dnsRC == UTIL_FAILURE)
-			    {
-					fprintf(stderr, "dnslookup error: %s\n", hostname);
-					strncpy(firstipstr, "", sizeof(firstipstr));
-			    }
-			    pthread_mutex_lock(&fileLock);
-				fprintf(outputfp, "%s,%s\n", hostname, firstipstr);
-				pthread_mutex_unlock(&fileLock);
-			}
-			free(hostname);
-		}
-		else	//Queue is empty
-		{
-			pthread_mutex_unlock(&queueLock);
-		}
+	//open input file for reading, -2 to exclude executable and output file
+	int numInputFiles = args->argc-2;
+	for(int i = 1; i <= numInputFiles; i++){ //loop through all input files
+		//open input file for reading
+		args->inputFile = fopen(args->argv[i], "r");
+		//if bogus input file exit
+	    if(!args->inputFile){
+			perror("Bogus input file path");
+			return (void*)EXIT_FAILURE;
+    	}
+    	//fscanf is memory safe, will not read more than 1024 characters
+		//read in a line from input file into buff
+		while(fscanf(args->inputFile, INPUTFS, buff) > 0){
+            	pthread_mutex_lock(&args->queueLock); //acquire lock so other threads cannot access queue
+            	while(queue_is_full(&args->fifoQueue)){ //if queue is full
+                	pthread_mutex_unlock(&args->queueLock); //release lock
+                	usleep(rand() % 100); //random sleep period between 0 and 100 microseconds
+                	pthread_mutex_lock(&args->queueLock); //acquire lock
+            	}
+            	if(!queue_is_full(&args->fifoQueue)){ //if queue is not full
+                	url = malloc(MAX_NAME_LENGTH); //dynamatically allocate memory for url so it can be pushed to queue
+                	strncpy(url, buff, MAX_NAME_LENGTH); //copy buff into url 
+                	queue_push(&args->fifoQueue, url); //push url into queue
+                	pthread_mutex_unlock(&args->queueLock); //release lock so other threads can access it
+            	}
+    	}
+		fclose(args->inputFile);//close current input file and move on to the next if it exists
 	}
 	return NULL;
 }
 
-int main(int argc, char* argv[])
-{
-	int numFiles = argc - 2;
-    /* Local Vars */
 
-    pthread_mutex_init(&queueLock, NULL);
-    pthread_mutex_init( &fileLock, NULL);
+void* resolverThread(void* inputFileName){
+	struct threadArgs *args = (struct threadArgs*) inputFileName; 
+	char* buff;	//will hold a url at a time from fifoQueue
+	char ip[MAX_IP_LENGTH]; //holds ip address
 
-    queue_init(&hostnameQueue, 50);
-    
-    pthread_t requestThreads[argc-1];
+	//loop until queue is empty or all requests have been processed
+	while(!queue_is_empty(&args->fifoQueue) || !allRequestProcessed){
+		pthread_mutex_lock(&args->queueLock); //acquire lock so other thread cannot access queue
+		if(!queue_is_empty(&args->fifoQueue)){ //if queue is not empty
+			buff = queue_pop(&args->fifoQueue); //popping url from queue to buff
+       		pthread_mutex_unlock(&args->queueLock); //release lock so other threads can access queue
+			if(buff){
+				//generates ip from given url
+      			if(dnslookup(buff, ip, sizeof(ip)) == UTIL_FAILURE){
+        			fprintf(stderr, "dnslookup error: %s\n", buff);
+        			strncpy(ip, "", sizeof(ip));
+      			}
+			    pthread_mutex_lock(&args->fileLock); //acquire lock on file to have exclusive access
+			    fprintf(args->outputFile, "%s,%s\n", buff, ip); //print format: hostname(url),ip(blank if bogus)
+			    pthread_mutex_unlock(&args->fileLock); //unlock file so other threads can access it
+				free(buff); //deallocate memory for buff
+			}
+		}else{ //otherwise queue is empty
+			pthread_mutex_unlock(&args->queueLock); //release lock for other threads to access queue
+		}
+	}
+	return NULL;
+}
+
+int main(int argc, char* argv[]){
+	struct threadArgs args;  
+	args.argv = argv; //array of arguments
+	args.argc = argc; //num arguments
+    pthread_mutex_init(&args.queueLock, NULL); //initialize queue threads
+    pthread_mutex_init(&args.fileLock, NULL); //initialize file threads
+    queue_init(&args.fifoQueue, QUEUEMAXSIZE); //queue max size is 50 
+
+    pthread_t requestThreads; //1 thread per input file
     pthread_t resolverThreads[MAX_RESOLVER_THREADS];
 
-    pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-
-
     //check for valid number of arguments
-    if(argc < MIN_INPUT_FILES){
+    //at least 3 fields: executable, input file, output file
+    if(argc < MINARGS){
 		fprintf(stderr, "Not enough arguments: %d\n", (argc - 1));
 		fprintf(stderr, "Usage:\n %s %s\n", argv[0], USAGE);
 		return EXIT_FAILURE;
     }
-
-    //open output file
-    outputfp = fopen(argv[(argc-1)], "w");
-    if(!outputfp)
-    {
-		perror("Error Opening Output File");
+	
+	//open output file for writing which is the last argument
+	args.outputFile = fopen(argv[(argc-1)], "w");
+    //if bogus output file exit
+    if(!args.outputFile){
+		perror("Bogus output file path");
 		return EXIT_FAILURE;
     }
 
-    //loop throught inputfiles
-    for(int i=1; i<(argc-1); i++)	//Allocate 1 thread for every iteration here
-    {
-		int rc = pthread_create(&requestThreads[i-1], &attr, requestThread, argv[i]);
-		if(rc)
-		{
-			printf("Request thread broke\n");
-		}
-    }
+	//create request threads
+	pthread_create(&requestThreads, NULL, requestThread, (void*)&args);
 
-    /* Create resolver threads */
-    for(int i = 0; i < MAX_RESOLVER_THREADS; ++i)
-    {
-    	int rc = pthread_create(&resolverThreads[i], &attr, resolverThread, NULL);
-    	if(rc)
-    	{
-    		printf("Resolver thread broke\n");
-    	}
-    }
+	//create resolver threads
+    for(int i = 0; i < MAX_RESOLVER_THREADS; i++)
+    	pthread_create(&resolverThreads[i], NULL, resolverThread, (void*)&args);
+    
+	//wait for request threads to finish
+    pthread_join(requestThreads,  NULL);
 
-    /* Join on the request threads */
-    for(int i = 0; i < numFiles; ++i)
-    {
-    	int rc = pthread_join( requestThreads[i],  NULL);
-    	if(rc)
-    	{
-    		printf("Request thread broke");
-    	}
-    }
-    requestThreadsFinished = 1;
+	//signal resolver threads that all requests have been processed
+    allRequestProcessed = 1; 
 
-    /* Join on the resolver threads */
-    for(int i = 0; i < MAX_RESOLVER_THREADS; ++i)
-    {
-    	int rc = pthread_join( resolverThreads[i], NULL);
-		if(rc)
-    	{
-    		printf("Resolver thread broke");
-    	}    
-    }
+	//wait for resolver threads to finish
+    for(int i = 0; i < MAX_RESOLVER_THREADS; i++)
+    	pthread_join(resolverThreads[i], NULL);
 
-    /* Close Output File */
-    fclose(outputfp);
-    queue_cleanup(&hostnameQueue);
-    /* Destroy mutexes */
-    pthread_mutex_destroy(&queueLock);
-	pthread_mutex_destroy( &fileLock);
+    //destroy mutexes
+    pthread_mutex_destroy(&args.queueLock);
+	pthread_mutex_destroy(&args.fileLock);
 
-    return EXIT_SUCCESS;
+	//close output file
+    fclose(args.outputFile);
+	//free queue memory
+    queue_cleanup(&args.fifoQueue);
 }
