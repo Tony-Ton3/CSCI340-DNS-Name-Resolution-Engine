@@ -111,7 +111,7 @@ int main(int argc, char* argv[]){
     pthread_mutex_init(&args.fileLock, NULL); //initialize file threads
     queue_init(&args.fifoQueue, QUEUEMAXSIZE); //queue max size is 50 
 
-    pthread_t requestThreads; //1 thread per input file
+    pthread_t requestThreads; //1 thread to handle all input files
     pthread_t resolverThreads[MAX_RESOLVER_THREADS];
 
     //check for valid number of arguments
