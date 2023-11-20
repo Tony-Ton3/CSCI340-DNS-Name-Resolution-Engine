@@ -12,9 +12,9 @@
 //constants
 #define MINARGS 3 
 #define USAGE "<inputFilePath> <outputFilePath>"
-#define MAX_RESOLVER_THREADS 10
 #define MAX_NAME_LENGTH 1025
 #define INPUTFS "%1024s"
+//#define MAX_RESOLVER_THREADS 10
 #define MAX_IP_LENGTH INET6_ADDRSTRLEN
 
 struct threadArgs{ //hold necessary member variables to perform thread safe operations
@@ -112,7 +112,7 @@ int main(int argc, char* argv[]){
     queue_init(&args.fifoQueue, QUEUEMAXSIZE); //queue max size is 50 
 
     pthread_t requestThreads; //1 thread to handle all input files
-    pthread_t resolverThreads[MAX_RESOLVER_THREADS];
+    
 
     //check for valid number of arguments
     //at least 3 fields: executable, input file, output file
@@ -133,18 +133,21 @@ int main(int argc, char* argv[]){
 	//create request threads
 	pthread_create(&requestThreads, NULL, requestThread, (void*)&args);
 
-	//create resolver threads
-    for(int i = 0; i < MAX_RESOLVER_THREADS; i++)
+	int numResolverThreads = sysconf(_SC_NPROCESSORS_ONLN); //getting core count
+    pthread_t resolverThreads[numResolverThreads];//matching number of resolver threads to core count
+	//create resolver threads matching number of cores
+    for(int i = 0; i < numResolverThreads; i++){
     	pthread_create(&resolverThreads[i], NULL, resolverThread, (void*)&args);
+	}
     
 	//wait for request threads to finish
-    pthread_join(requestThreads,  NULL);
+    pthread_join(requestThreads, NULL);
 
 	//signal resolver threads that all requests have been processed
     allRequestProcessed = 1; 
 
 	//wait for resolver threads to finish
-    for(int i = 0; i < MAX_RESOLVER_THREADS; i++)
+    for(int i = 0; i < numResolverThreads; i++)
     	pthread_join(resolverThreads[i], NULL);
 
     //destroy mutexes
