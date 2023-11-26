@@ -9,7 +9,6 @@
  *      Programming Assignment 2.
  *  
  */
-
 #include "util.h"
 
 int dnslookup(const char* hostname, char* firstIPstr, int maxSize){
